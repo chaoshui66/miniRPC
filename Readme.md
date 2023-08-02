@@ -1,6 +1,6 @@
 # miniRPC
 
-A simple RPC Lib based on asyncio
+A simple RPC lib based on asyncio
 
 ## Basic usage
 server 
