@@ -21,6 +21,7 @@ class Client:
         self._writer = None
         self.packet_reader = None
         self.packet_writer = None
+        self._lock = asyncio.Lock()
 
     async def __aenter__(self):
         await self.connect()
@@ -44,15 +45,19 @@ class Client:
     async def call(self, func: str, *args, **kwargs) -> Any:
         _call = _Call(func, *args, **kwargs)
         packet = self._serializer.encode(_call)
-        await self.packet_writer.write(packet)
 
-        result_packet = await self.packet_reader.read_packet()
+        await self._lock.acquire()
 
         try:
-            result = self._serializer.decode(result_packet)
+            await self.packet_writer.write(packet)
+            result_packet = await self.packet_reader.read_packet()
         except Exception as e:
             raise e
-        
+        finally:
+            self._lock.release()
+
+        result = self._serializer.decode(result_packet)
+
         if isinstance(result, _Exception):
             raise result.value()
         
