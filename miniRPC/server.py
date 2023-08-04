@@ -1,4 +1,4 @@
-from asyncio import StreamReader, StreamWriter, start_server
+from asyncio import StreamReader, StreamWriter, start_server, iscoroutinefunction
 from typing import Callable, Union
 
 from miniRPC.data import _Exception, _Return
@@ -44,7 +44,11 @@ class Server:
                 continue
 
             try:
-                result = func(*call_.args, **call_.kwargs)
+                if iscoroutinefunction(func):
+                    result = await func(*call_.args, **call_.kwargs)
+                else:
+                    result = func(*call_.args, **call_.kwargs)
+
             except Exception as e:
                 await self._write_result(packet_writer, _Exception(e))
             else:
