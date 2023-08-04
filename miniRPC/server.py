@@ -1,4 +1,3 @@
-import asyncio
 from asyncio import StreamReader, StreamWriter, start_server
 from typing import Callable, Union
 
