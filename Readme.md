@@ -44,7 +44,20 @@ async def main():
             print(await client.call('add', i, i))
             print(await client.call('say_hello', 'world'))
             print(await client.call('divide', 0, 0))
-
+        
+        # Concurrency Call
+        # Actually, if there are multiple requests, the client will not wait for the result of 
+        # the previous request, it will send subsequent requests before the response arrives. 
+        # The client has a background loop that reads the server's response and sets the 
+        # Future object with the result.
+        tasks = list()
+        tasks.append(client.call('add', i, i))
+        tasks.append(client.call('say_hello', 'world'))
+        tasks.append(client.call('divide', 0, 0))
+        
+        results = await asyncio.gather(*tasks)
+        print(results)
+        
 
 if __name__ == '__main__':
     asyncio.run(main())
