@@ -53,44 +53,57 @@ class _TaskRing:
 
 
 class Server:
+    """
+    Server
+    serve 方法是提供给 asyncio.start_server 的回调函数
+    把接收到的数据反序列化为 _Call 对象，然后调用对应的函数，最后把结果序列化为 _Return 对象返回
+    接收到请求以后，会创建一个 task 来处理请求，如果 task_ring 中有空闲的 task，就会把 task 放入 task_ring 中
+    如果 task_ring 中没有空闲的 task，就会等待 task_ring 中的 task 完成
+    这样就可以支持多个请求同时处理
+    """
 
     def __init__(
-        self, 
-        host: str,
-        port: int = 4321,
-        serializer: Serializer = PickleSerializer()
+            self,
+            host: str,
+            port: int = 4321,
+            serializer: Serializer = PickleSerializer()
     ):
         self._host = host
         self._port = port
         self._func_map = {}
         self._serializer = serializer
-    
+        self._write_lock = asyncio.Lock()
+
     def register(self, func: Callable, name: str = None):
         if name is None:
             name = func.__name__
         self._func_map[name] = func
 
-    async def serve(self, reader: StreamReader, writer: StreamWriter):        
+    async def serve(self, reader: StreamReader, writer: StreamWriter):
         packet_reader = PacketReader(reader)
         packet_writer = PacketWriter(writer)
         task_ring = _TaskRing.init_task_ring()
 
         while True:
             packet = await packet_reader.read_packet()
+
             if not packet:
                 break
 
             async def handle_func(packet_: bytes):
-
+                cid = None
                 try:
                     call_ = self._serializer.decode(packet_)
+                    cid = call_.cid
+
                 except Exception as e:
-                    await self._write_result(packet_writer, _Exception(e))
+                    await self._write_result(packet_writer, _Exception(e, cid))
                     return
 
                 func = self._func_map.get(call_.method)
                 if not func:
-                    await self._write_result(packet_writer, _Exception(AttributeError(f'No such method: {call_.method}')))  # noqa
+                    await self._write_result(packet_writer,
+                                             _Exception(AttributeError(f'No such method: {call_.method}')))  # noqa
                     return
 
                 try:
@@ -99,21 +112,23 @@ class Server:
                     else:
                         result = func(*call_.args, **call_.kwargs)
                 except Exception as e:
-                    await self._write_result(packet_writer, _Exception(e))
+                    await self._write_result(packet_writer, _Exception(e, cid))
                 else:
-                    await self._write_result(packet_writer, _Return(result))
+                    await self._write_result(packet_writer, _Return(result, cid))
 
+            task = asyncio.create_task(handle_func(packet))
             if not task_ring.empty():
                 await task_ring.wait()
 
-            task = asyncio.create_task(handle_func(packet))
             task_ring.set_task(task)
             task_ring = task_ring.get_next()
 
     async def _write_result(self, packet_writer: PacketWriter, return_: Union[_Return, _Exception]):
         packet = self._serializer.encode(return_)
+        await self._write_lock.acquire()
         await packet_writer.write(packet)
-    
+        self._write_lock.release()
+
     async def run(self):
         server = await start_server(self.serve, self._host, self._port)
         await server.serve_forever()
