@@ -1,4 +1,3 @@
-import asyncio
 from asyncio import StreamReader, StreamWriter
 from typing import Union
 
@@ -43,14 +42,15 @@ class PacketReader:
     async def read_packet(self) -> Union[bytes, None]:
 
         while True:
+            if self.read_buffer:
+                packet = self._try_read_packet()
+                if packet:
+                    return packet
+
             data = await self.reader.read(1024)
             if not data:
                 return
-
             self.read_buffer += data
-            packet = self._try_read_packet()
-            if packet:
-                return packet
 
     def _try_read_packet(self):
         length = 0
