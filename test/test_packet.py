@@ -1,5 +1,5 @@
-import unittest
 import pickle
+import unittest
 
 from miniRPC.packet import PacketReader, PacketWriter
 

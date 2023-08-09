@@ -1,6 +1,3 @@
-from asyncio import StreamReader, StreamWriter
-from typing import Union
-
 """
 TCP 分包
 使用若干个字节作为长度标识
@@ -8,9 +5,14 @@ TCP 分包
 1 代表结束
 0 代表未结束
 """
+from asyncio import StreamReader, StreamWriter
+from typing import Union
 
 
 class PacketWriter:
+    """
+    write packet to stream
+    """
 
     def __init__(self, writer: StreamWriter) -> None:
         self.writer = writer
