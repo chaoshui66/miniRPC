@@ -1,5 +1,6 @@
 import asyncio
 from typing import Any, Generator
+from logging import Logger, getLogger
 
 from miniRPC.data import _Call, _Exception
 from miniRPC.packet import PacketReader, PacketWriter
@@ -9,10 +10,11 @@ from miniRPC.serializer import PickleSerializer, Serializer
 class Client:
 
     def __init__(
-        self, 
+        self,
         host: str,
         port: int = 4321,
-        serializer: Serializer = PickleSerializer()
+        serializer: Serializer = PickleSerializer(),
+        logger: Logger = getLogger(__name__)
     ):
         self._host = host
         self._port = port
@@ -21,6 +23,7 @@ class Client:
         self._writer = None
         self.packet_reader = None
         self.packet_writer = None
+        self.logger = logger
         self._call_dict = {}
         self._cid_generator = self.cid_generator()
         self._read_loop_task = None
@@ -77,7 +80,7 @@ class Client:
                 else:
                     future.set_result(result.value())
             except Exception as e:
-                print(e)
+                self.logger.exception("read_loop error: %s", e)
                 break
 
     async def _call(self, func_name: str, *args, **kwargs) -> asyncio.Future:
@@ -89,6 +92,8 @@ class Client:
         await self._write_lock.acquire()
         await self.packet_writer.write(packet)
         self._write_lock.release()
+
+        self.logger.debug(f'{_call} sent')
 
         future = asyncio.Future()
         self._call_dict[cid] = future

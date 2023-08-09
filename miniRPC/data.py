@@ -15,6 +15,9 @@ class _Call(_Trace):
         self.args = args
         self.kwargs = kwargs
 
+    def __str__(self):
+        return f'Call {self.method}, cid: {self.cid}'
+
 
 class _Return(_Trace):
 
@@ -28,12 +31,12 @@ class _Return(_Trace):
 
 class _Exception(_Trace):
 
-    def __init__(self, value: Any, cid: int) -> None:
+    def __init__(self, value: Exception, cid: int) -> None:
         super().__init__(cid)
         self._value = value
 
     def __repr__(self):
         return repr(object)
-    
+
     def value(self):
-        raise self.value
+        raise self._value

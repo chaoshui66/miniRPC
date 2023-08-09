@@ -1,5 +1,6 @@
 import asyncio
-from asyncio import StreamReader, StreamWriter, start_server, iscoroutinefunction
+import logging
+from logging import Logger, getLogger
 from typing import Callable, Union
 
 from miniRPC.data import _Exception, _Return
@@ -20,7 +21,7 @@ class _TaskRing:
         for _ in range(num - 1):
             node._next = cls(None)
             node = node._next
-        node._next = head
+        node.set_next(head)
         return head
 
     def empty(self) -> bool:
@@ -39,6 +40,9 @@ class _TaskRing:
 
     def get_next(self) -> "_TaskRing":
         return self._next
+
+    def set_next(self, node: "_TaskRing"):
+        self._next = node
 
     async def wait(self):
         if self.empty():
@@ -63,23 +67,25 @@ class Server:
     """
 
     def __init__(
-            self,
-            host: str,
-            port: int = 4321,
-            serializer: Serializer = PickleSerializer()
+        self,
+        host: str,
+        port: int = 4321,
+        serializer: Serializer = PickleSerializer(),
+        logger: Logger = getLogger(__name__)
     ):
         self._host = host
         self._port = port
         self._func_map = {}
         self._serializer = serializer
         self._write_lock = asyncio.Lock()
+        self.logger = logger
 
     def register(self, func: Callable, name: str = None):
         if name is None:
             name = func.__name__
         self._func_map[name] = func
 
-    async def serve(self, reader: StreamReader, writer: StreamWriter):
+    async def serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         packet_reader = PacketReader(reader)
         packet_writer = PacketWriter(writer)
         task_ring = _TaskRing.init_task_ring()
@@ -102,12 +108,11 @@ class Server:
 
                 func = self._func_map.get(call_.method)
                 if not func:
-                    await self._write_result(packet_writer,
-                                             _Exception(AttributeError(f'No such method: {call_.method}')))  # noqa
+                    await self._write_result(packet_writer, _Exception(AttributeError(f'No such method: {call_.method}'), cid))  # noqa
                     return
 
                 try:
-                    if iscoroutinefunction(func):
+                    if asyncio.iscoroutinefunction(func):
                         result = await func(*call_.args, **call_.kwargs)
                     else:
                         result = func(*call_.args, **call_.kwargs)
@@ -115,6 +120,7 @@ class Server:
                     await self._write_result(packet_writer, _Exception(e, cid))
                 else:
                     await self._write_result(packet_writer, _Return(result, cid))
+                self.logger.info(f'{call_}, finished')
 
             task = asyncio.create_task(handle_func(packet))
             if not task_ring.empty():
@@ -130,5 +136,6 @@ class Server:
         self._write_lock.release()
 
     async def run(self):
-        server = await start_server(self.serve, self._host, self._port)
+        self.logger.info(f'Server start at {self._host}:{self._port}')
+        server = await asyncio.start_server(self.serve, self._host, self._port)
         await server.serve_forever()
